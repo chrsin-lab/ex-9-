@@ -7,24 +7,29 @@ Future<void> main() async {
   await Firebase.initializeApp();
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: ProductSearchApp(),
+    home: UpdateProductApp(),
   ));
 }
 
-class ProductSearchApp extends StatefulWidget {
-  const ProductSearchApp({super.key});
+class UpdateProductApp extends StatefulWidget {
+  const UpdateProductApp({super.key});
 
   @override
-  State<ProductSearchApp> createState() => _ProductSearchAppState();
+  State<UpdateProductApp> createState() => _UpdateProductAppState();
 }
 
-class _ProductSearchAppState extends State<ProductSearchApp> {
-  final TextEditingController _searchController = TextEditingController();
+class _UpdateProductAppState extends State<UpdateProductApp> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _quantityController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
+
   Map<String, dynamic>? _product;
   String _message = "";
+  String? _productId; // To track which document to update
 
+  // 🔍 Search Product Function
   Future<void> _searchProduct() async {
-    String productName = _searchController.text.trim();
+    String productName = _nameController.text.trim();
 
     if (productName.isEmpty) {
       setState(() {
@@ -41,14 +46,19 @@ class _ProductSearchAppState extends State<ProductSearchApp> {
           .get();
 
       if (snapshot.docs.isNotEmpty) {
+        var doc = snapshot.docs.first;
         setState(() {
-          _product = snapshot.docs.first.data() as Map<String, dynamic>;
+          _productId = doc.id;
+          _product = doc.data() as Map<String, dynamic>;
+          _quantityController.text = _product!['quantity'].toString();
+          _priceController.text = _product!['price'].toString();
           _message = "";
         });
       } else {
         setState(() {
           _product = null;
-          _message = "Product not found";
+          _productId = null;
+          _message = "Product not found.";
         });
       }
     } catch (e) {
@@ -58,69 +68,115 @@ class _ProductSearchAppState extends State<ProductSearchApp> {
     }
   }
 
+  // ✏️ Update Product Function
+  Future<void> _updateProduct() async {
+    if (_productId == null) {
+      setState(() {
+        _message = "Please search for a product first!";
+      });
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('products')
+          .doc(_productId)
+          .update({
+        'quantity': int.tryParse(_quantityController.text) ?? 0,
+        'price': double.tryParse(_priceController.text) ?? 0.0,
+      });
+
+      setState(() {
+        _message = "Product details updated successfully!";
+      });
+    } catch (e) {
+      setState(() {
+        _message = "Error updating product: $e";
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Product Search"),
-        backgroundColor: Colors.teal,
+        title: const Text("Update Product Details"),
+        backgroundColor: Colors.indigo,
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // Input Field
-            TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                labelText: "Enter Product Name",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // Search Button
-            ElevatedButton(
-              onPressed: _searchProduct,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text("Search"),
-            ),
-            const SizedBox(height: 20),
-
-            // Display Result
-            if (_message.isNotEmpty)
-              Text(
-                _message,
-                style: const TextStyle(color: Colors.red, fontSize: 16),
-              ),
-
-            if (_product != null)
-              Card(
-                elevation: 4,
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                child: ListTile(
-                  title: Text(
-                    "Name: ${_product!['name']}",
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Quantity: ${_product!['quantity']}"),
-                      Text("Price: ₹${_product!['price']}"),
-                      if (_product!['quantity'] < 5)
-                        const Text(
-                          "Low Stock!",
-                          style: TextStyle(color: Colors.red),
-                        ),
-                    ],
-                  ),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              // 🔹 Product Name
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: "Enter Product Name",
+                  border: OutlineInputBorder(),
                 ),
               ),
-          ],
+              const SizedBox(height: 10),
+
+              // 🔍 Search Button
+              ElevatedButton(
+                onPressed: _searchProduct,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.indigo,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text("Search"),
+              ),
+              const SizedBox(height: 20),
+
+              if (_product != null) ...[
+                // 🧾 Quantity Field
+                TextField(
+                  controller: _quantityController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: "Update Quantity",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // 💰 Price Field
+                TextField(
+                  controller: _priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: "Update Price",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // ✏️ Update Button
+                ElevatedButton(
+                  onPressed: _updateProduct,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text("Update"),
+                ),
+              ],
+
+              const SizedBox(height: 20),
+
+              // 🟢 Status Message
+              Text(
+                _message,
+                style: TextStyle(
+                  color: _message.contains("Error")
+                      ? Colors.red
+                      : Colors.blueAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
